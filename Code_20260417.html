@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多人积分系统（微信可用）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+        }
+        body {
+            background-color: #f5f7fa;
+            padding: 16px;
+        }
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        h3 {
+            margin-bottom: 16px;
+            color: #333;
+            font-size: 18px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            color: white;
+        }
+        .btn-add { background: #277da1; }
+        .btn-sub { background: #ee6c4d; }
+        .btn-refresh { background: #34a65f; width: 100%; margin-top: 10px; }
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .score-name { font-weight: 500; color: #333; }
+        .score-val { font-weight: 600; color: #277da1; }
+        .empty {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 操作区 -->
+        <div class="card">
+            <h3>📝 积分操作</h3>
+            <input type="text" id="userName" placeholder="输入你的名字">
+            <input type="number" id="scoreNum" value="1" placeholder="加减分数（默认+1）">
+            <div class="btn-row">
+                <button class="btn-add" onclick="updateScore(1)">➕ 加分</button>
+                <button class="btn-sub" onclick="updateScore(-1)">➖ 扣分</button>
+            </div>
+        </div>
+
+        <!-- 排行榜区 -->
+        <div class="card">
+            <h3>🏆 积分排行榜</h3>
+            <div id="scoreList" class="empty">暂无数据，点击刷新加载</div>
+            <button class="btn-refresh" onclick="refreshList()">🔄 刷新数据</button>
+        </div>
+    </div>
+
+    <script>
+        // 用国内可访问的免费JSONBin公共数据服务
+        const BIN_ID = '670c3d17e41b4d34e47a5c7b';
+        const BASE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+        const API_KEY = '$2a$10$LdD6j0d5R8Yj0xWkQZpVqO7c8f9A0bC1dE2F3G4H5I6J7K8L9M0N';
+
+        // 更新积分
+        async function updateScore(type) {
+            const name = document.getElementById('userName').value.trim();
+            const num = parseInt(document.getElementById('scoreNum').value) || 1;
+
+            if (!name) return alert('请先输入名字！');
+
+            try {
+                // 1. 获取当前所有积分数据
+                const res = await fetch(`${BASE_URL}/latest`);
+                const data = await res.json();
+                let scores = data.record || {};
+
+                // 2. 更新分数（不允许负数）
+                scores[name] = (scores[name] || 0) + (num * type);
+                if (scores[name] < 0) scores[name] = 0;
+
+                // 3. 保存回数据库
+                await fetch(BASE_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Access-Key': API_KEY
+                    },
+                    body: JSON.stringify(scores)
+                });
+
+                alert(`${name} 操作成功！当前积分：${scores[name]}`);
+                refreshList();
+            } catch (err) {
+                alert('操作失败：' + err.message + '\n请检查网络后重试');
+            }
+        }
+
+        // 刷新排行榜
+        async function refreshList() {
+            const listEl = document.getElementById('scoreList');
+            listEl.innerHTML = '<div class="empty">加载中...</div>';
+
+            try {
+                const res = await fetch(`${BASE_URL}/latest`);
+                const data = await res.json();
+                const scores = data.record || {};
+
+                // 按分数从高到低排序
+                const sortedList = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+
+                if (sortedList.length === 0) {
+                    listEl.innerHTML = '<div class="empty">暂无数据，快去加分吧！</div>';
+                    return;
+                }
+
+                // 生成HTML
+                let html = '';
+                sortedList.forEach(([name, score]) => {
+                    html += `
+                        <div class="score-item">
+                            <span class="score-name">${name}</span>
+                            <span class="score-val">${score} 分</span>
+                        </div>
+                    `;
+                });
+                listEl.innerHTML = html;
+            } catch (err) {
+                listEl.innerHTML = '<div class="empty">加载失败，请点击刷新重试</div>';
+            }
+        }
+
+        // 页面加载自动刷新
+        window.onload = refreshList;
+        // 每30秒自动同步一次，保证多人实时更新
+        setInterval(refreshList, 30000);
+    </script>
+</body>
+</html>
